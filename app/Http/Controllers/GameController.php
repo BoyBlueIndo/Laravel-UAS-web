@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\Peminjaman;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -22,19 +23,18 @@ class GameController extends Controller
         return view('game.tampil', compact('game', 'search'));
     }
 
-    function tampiluser(Request $request)
-    {
-        $search = $request->input('search'); // Ambil nilai pencarian dari input
+    public function tampiluser(Request $request)
+{
+    $search = $request->input('search');
+    $game = Game::with('peminjaman') // Muat relasi peminjaman
+        ->when($search, function ($query, $search) {
+            $query->where('judul', 'like', "%{$search}%");
+        })
+        ->get();
 
-        if ($search) {
-            $game = Game::where('judul', 'like', '%' . $search . '%')->get(); // Pencarian game berdasarkan nama
-        } else {
-            $game = Game::all(); // Ambil semua game jika tidak ada pencarian
-        }
+    return view('game.tampiluser', compact('game', 'search'));
+}
 
-        $game = Game::get();
-        return view('game.tampiluser', compact('game', 'search'));
-    }
 
     function tambah()
     {
@@ -81,21 +81,74 @@ class GameController extends Controller
         return redirect()->route('game.tampil');
     }
 
-    function beli($id)
-    {
-        // Cari game berdasarkan ID
-        $game = Game::find($id);
+    // function beli($id)
+    // {
+    //     // Cari game berdasarkan ID
+    //     $game = Game::find($id);
 
-        // Pastikan game ditemukan dan stok cukup untuk dibeli
-        if (!$game || $game->stok <= 0) {
-            return redirect()->route('game.tampiluser')->with('error', 'Stok game tidak cukup.');
-        }
+    //     // Pastikan game ditemukan dan stok cukup untuk dibeli
+    //     if (!$game || $game->stok <= 0) {
+    //         return redirect()->route('game.tampiluser')->with('error', 'Stok game tidak cukup.');
+    //     }
 
-        // Kurangi stok game
-        $game->stok -= 1;
-        $game->save();
+    //     // Kurangi stok game
+    //     $game->stok -= 1;
+    //     $game->save();
 
-        // Redirect ke halaman tampilan user dengan pesan sukses
-        return redirect()->route('game.tampiluser')->with('success', 'Game berhasil dibeli!');
-        }
+    //     // Redirect ke halaman tampilan user dengan pesan sukses
+    //     return redirect()->route('game.tampiluser')->with('success', 'Game berhasil dibeli!');
+    // }
+
+    public function pinjam(Request $request, $gameId)
+{
+    $userId = Auth::id();
+
+    // Pastikan kolom di query sesuai dengan tabel
+    $existingPeminjaman = Peminjaman::where('user_id', $userId)
+        ->where('game_id', $gameId)
+        ->first();
+
+    if ($existingPeminjaman) {
+        return redirect()->back()->with('error', 'Anda sudah meminjam game ini.');
+    }
+
+    $game = Game::findOrFail($gameId);
+    if ($game->stok <= 0) {
+        return redirect()->back()->with('error', 'Stok game habis.');
+    }
+
+    // Proses peminjaman
+    Peminjaman::create([
+        'user_id' => $userId,
+        'game_id' => $gameId,
+    ]);
+
+    // Kurangi stok game
+    $game->stok -= 1;
+    $game->save();
+
+    return redirect()->back()->with('success', 'Game berhasil dipinjam.');
+}
+
+
+public function kembalikan($peminjamanId)
+{
+    // Temukan peminjaman berdasarkan id_pinjam
+    $peminjaman = Peminjaman::findOrFail($peminjamanId);
+
+    // Pastikan hanya user yang meminjam atau admin yang bisa mengembalikan
+    if (Auth::id() !== $peminjaman->user_id && Auth::user()->role !== 'admin') {
+        abort(403, 'Unauthorized action.');
+    }
+
+    // Mengembalikan stok game
+    $game = $peminjaman->game;
+    $game->stok += 1;
+    $game->save();
+
+    // Hapus peminjaman
+    $peminjaman->delete();
+
+    return redirect()->route('game.tampiluser')->with('success', 'Game berhasil dikembalikan.');
+}
 }

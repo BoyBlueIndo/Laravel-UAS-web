@@ -30,7 +30,8 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 Route::middleware(['auth', 'role:user'])->group(function () {
     Route::get('/gameuser', [GameController::class, 'tampiluser'])->name('game.tampiluser');
     Route::post('/game/beli/{id}', [GameController::class, 'beli'])->name('game.beli');
-
+    Route::post('/game/pinjam/{id}', [GameController::class, 'pinjam'])->name('game.pinjam');
+    Route::post('/game/kembalikan/{id}', [GameController::class, 'kembalikan'])->name('game.kembalikan');
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
